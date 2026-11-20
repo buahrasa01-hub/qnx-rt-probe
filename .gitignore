@@ -1,0 +1,10 @@
+# host binary
+qrtp
+# object files
+*.o
+# results
+results/
+build/
+# editor
+*.swp
+*~

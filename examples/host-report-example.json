@@ -1,0 +1,26 @@
+{
+  "tool": "qnx-rt-probe",
+  "tool_version": "0.1.0",
+  "transport": "posix-socketpair",
+  "host": true,
+  "qnx": false,
+  "iterations": 1000,
+  "warmup": 100,
+  "load_threads": 1,
+  "priority_elevated": false,
+  "thresholds_us": {"p50": 100.0, "p99": 500.0, "source": "host-default"},
+  "stats": {
+    "count": 1000,
+    "min_us": 10.2,
+    "max_us": 106.6,
+    "mean_us": 15.6,
+    "stddev_us": 6.1,
+    "p50_us": 14.7,
+    "p95_us": 16.9,
+    "p99_us": 34.1,
+    "jitter_max_us": 91.8,
+    "jitter_p99_us": 37.1
+  },
+  "verdict": "PASS",
+  "generated_at": "2026-11-20T03:38:03Z"
+}
