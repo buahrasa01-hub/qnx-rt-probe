@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # test_bench.sh — smoke test for the host path (also run by `make test`).
 # Builds, runs doctor, runs a small host bench, re-prints the report,
-# and asserts the QNX stubs fail cleanly. Exits non-zero on any failure.
+# and asserts the QNX build works and the boot stub fails cleanly.
+# Exits non-zero on any failure.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -21,9 +22,10 @@ python3 -m json.tool examples/host-report-example.json >/dev/null \
 echo "== smoke: report =="
 ./qrtp report examples/host-report-example.json || { echo "FAIL: report"; exit 1; }
 
-echo "== smoke: build stub must fail =="
-if ./qrtp build; then echo "FAIL: build stub should exit non-zero"; exit 1; fi
-echo "ok: build stub fails as expected"
+echo "== smoke: build (real qcc compile) =="
+./qrtp build || { echo "FAIL: build"; exit 1; }
+file qnx_demo | grep -q 'ldqnx' || { echo "FAIL: qnx_demo is not a QNX binary"; exit 1; }
+echo "ok: build produced a QNX binary"
 
 echo "== smoke: boot stub must fail =="
 if ./qrtp boot; then echo "FAIL: boot stub should exit non-zero"; exit 1; fi

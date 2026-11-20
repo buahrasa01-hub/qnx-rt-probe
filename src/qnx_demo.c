@@ -2,8 +2,8 @@
  * qnx_demo.c — QNX Neutrino guest demo for qnx-rt-probe.
  *
  * Compiles ONLY under qcc (QNX SDP 8.0). NOT compiled by the host build.
- * API usage is written from the public QNX Neutrino documentation and is
- * UNVERIFIED until the first qcc compile (M1).
+ * First qcc compile VERIFIED 20 Nov 2026 (M1); thresholds re-calibrated
+ * for the guest in M3 (see QRTP_GUEST_*_THRESHOLD_US below).
  *
  * Mirrors the host benchmark (bench.c) with the native transport:
  * a high-priority sender thread (SCHED_FIFO, prio 20) and a low-priority
@@ -31,6 +31,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+/* Guest-calibrated PASS thresholds (M3, 20 Nov 2026).
+ * Rule (docs/CODELAB.md section 6): 2x the worst p50 / worst p99 seen
+ * across all guest runs, rounded up to a round number.
+ *   p50 across 6 guest runs (2000 iters, loads 0-4): 20.4-20.9 us,
+ *     worst 20.9 -> 2x = 41.8 -> 50 us.
+ *   p99 across the same runs: 31.5-47.4 us, worst 47.4 -> 2x = 94.8
+ *     -> 100 us.
+ * Every guest run so far passes these with ~2x margin; a 2.4x rise in
+ * p50 or a 2.1x rise in p99 fails the build. The host defaults
+ * (100/500 us, "host-default") were placeholders and are NOT used here.
+ */
+#define QRTP_GUEST_P50_THRESHOLD_US 50.0
+#define QRTP_GUEST_P99_THRESHOLD_US 100.0
 
 typedef struct demo_ctx {
     qrtp_transport_t *transport;
@@ -180,16 +194,18 @@ int main(int argc, char **argv) {
            "\"transport\":\"qnx-msgsend\",\"host\":false,\"qnx\":true,"
            "\"iterations\":%d,\"warmup\":%d,\"load_threads\":%d,"
            "\"priority_elevated\":true,"
-           "\"thresholds_us\":{\"p50\":100.0,\"p99\":500.0,\"source\":\"host-default\"},"
+           "\"thresholds_us\":{\"p50\":%.1f,\"p99\":%.1f,\"source\":\"guest-calibrated\"},"
            "\"stats\":{\"count\":%d,\"min_us\":%.1f,\"max_us\":%.1f,"
            "\"mean_us\":%.1f,\"stddev_us\":%.1f,\"p50_us\":%.1f,"
            "\"p95_us\":%.1f,\"p99_us\":%.1f,\"jitter_max_us\":%.1f,"
            "\"jitter_p99_us\":%.1f},"
            "\"verdict\":\"%s\"}\n",
            iterations, warmup, load,
+           QRTP_GUEST_P50_THRESHOLD_US, QRTP_GUEST_P99_THRESHOLD_US,
            st.n, st.min_us, st.max_us, st.mean_us, st.stddev_us,
            st.p50_us, st.p95_us, st.p99_us, st.jitter_max_us, st.jitter_p99_us,
-           (st.p50_us <= 100.0 && st.p99_us <= 500.0) ? "PASS" : "FAIL");
+           (st.p50_us <= QRTP_GUEST_P50_THRESHOLD_US &&
+            st.p99_us <= QRTP_GUEST_P99_THRESHOLD_US) ? "PASS" : "FAIL");
     fflush(stdout);
     rc = 0;
 out:

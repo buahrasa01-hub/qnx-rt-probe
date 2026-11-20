@@ -4,9 +4,10 @@
  * Subcommands:
  *   doctor   environment check (never fails the build)
  *   bench    host benchmark (only --host works today)
- *   report   re-print a report JSON
- *   build    STUB: cross-compile the QNX demo (needs qcc / SDP)
- *   boot     STUB: boot the QNX image in QEMU (needs a QSTI image)
+ *   report   re-print a report JSON (host or QNX guest)
+ *   build    cross-compile the QNX demo with qcc (needs the SDP)
+ *   boot     STUB: boot the QNX image in QEMU (needs a QSTI image;
+ *            the working guest path is scripts/run-qemu-generic.sh)
  *   run      STUB: full pipeline (blocked on the SDP)
  *
  * Stubs fail loudly with the missing piece named. Nothing here fakes a
@@ -17,7 +18,6 @@
 #include "bench.h"
 #include "report.h"
 
-#include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
 #include <limits.h>
@@ -37,8 +37,8 @@ static void usage(FILE *out) {
         "Commands:\n"
         "  doctor            Check the host / QNX environment\n"
         "  bench --host      Run the host message-passing benchmark\n"
-        "  report <file>     Re-print a report JSON\n"
-        "  build             Cross-compile the QNX demo (needs qcc; STUB)\n"
+        "  report <file>     Re-print a report JSON (host or QNX guest)\n"
+        "  build             Cross-compile the QNX demo (needs qcc + SDP)\n"
         "  boot [--image P]  Boot the QNX image in QEMU (needs QSTI; STUB)\n"
         "  run               Full pipeline build+boot+bench (STUB)\n"
         "\n"
@@ -83,20 +83,6 @@ static int path_exists(const char *path) {
     return stat(path, &st) == 0;
 }
 
-static int qnx800_has_ifs(const char *dir) {
-    DIR *d = opendir(dir);
-    if (!d) return 0;
-    struct dirent *e;
-    int found = 0;
-    while ((e = readdir(d)) != NULL) {
-        const char *n = e->d_name;
-        size_t len = strlen(n);
-        if (len > 4 && strcmp(n + len - 4, ".ifs") == 0) { found = 1; break; }
-    }
-    closedir(d);
-    return found;
-}
-
 static int cmd_doctor(void) {
     printf("qnx-rt-probe doctor\n");
     printf("-------------------\n");
@@ -104,22 +90,36 @@ static int cmd_doctor(void) {
     printf("gcc                  %s\n", gcc_v ? gcc_v : "MISSING");
     char *qemu_v = first_line("qemu-system-x86_64 --version 2>/dev/null | head -1");
     printf("qemu                 %s\n", qemu_v ? qemu_v : "MISSING");
-    char *qcc = first_line("command -v qcc 2>/dev/null");
-    printf("qcc                  %s\n", qcc ? qcc : "MISSING (QNX SDP 8.0 not installed)");
     const char *home = getenv("HOME");
-    char qnx800[PATH_MAX] = "";
-    if (home) snprintf(qnx800, sizeof(qnx800), "%s/qnx800", home);
-    printf("~/qnx800            %s\n",
-           (qnx800[0] && path_exists(qnx800)) ? "present" : "MISSING");
-    const char *target = getenv("QNX_TARGET");
-    printf("QNX_TARGET           %s\n", target ? target : "(unset)");
-    printf("QSTI image (*.ifs)   %s\n",
-           (qnx800[0] && qnx800_has_ifs(qnx800)) ? "present" : "MISSING");
+    char qcc_path[PATH_MAX] = "";
+    char env_path[PATH_MAX] = "";
+    char sdp_dir[PATH_MAX] = "";
+    if (home) {
+        snprintf(sdp_dir, sizeof(sdp_dir), "%s/qnx/qnx800", home);
+        snprintf(env_path, sizeof(env_path), "%s/qnx/qnx800/qnxsdp-env.sh", home);
+        snprintf(qcc_path, sizeof(qcc_path),
+                 "%s/qnx/qnx800/host/linux/x86_64/usr/bin/qcc", home);
+    }
+    char *qcc = first_line("command -v qcc 2>/dev/null");
+    if (!qcc && qcc_path[0] && path_exists(qcc_path))
+        qcc = qcc_path;
+    printf("qcc                  %s\n", qcc ? qcc : "MISSING (QNX SDP 8.0 not installed)");
+    printf("~/qnx/qnx800         %s\n",
+           (sdp_dir[0] && path_exists(sdp_dir)) ? "present" : "MISSING");
+    printf("qnxsdp-env.sh        %s\n",
+           (env_path[0] && path_exists(env_path)) ? "present" : "MISSING");
+    printf("generic disk image   %s\n",
+           path_exists("qemu-boot/disk.img")
+               ? "present (qemu-boot/disk.img)"
+               : "MISSING (run scripts/run-qemu-generic.sh; CWD must be the repo root)");
     printf("\n");
     printf("host-ready: %s\n", gcc_v ? "yes" : "no");
-    printf("qnx-ready:  no — SDP not installed (qcc missing, no QSTI image)\n");
-    printf("next step:  resolve myQNX auth for the Software Center, then run\n");
-    printf("            install-sdp.sh (see PLAN.md, risk R8).\n");
+    int qnx_ready = gcc_v && qcc && sdp_dir[0] && path_exists(sdp_dir) &&
+                    env_path[0] && path_exists(env_path);
+    printf("qnx-ready:  %s\n", qnx_ready ? "yes" : "no");
+    if (!qnx_ready)
+        printf("next step:  resolve myQNX auth for the Software Center, then run\n"
+               "            install-sdp.sh (see PLAN.md, risk R8).\n");
     return 0;
 }
 
@@ -166,6 +166,7 @@ static int cmd_bench(int argc, char **argv) {
     opts.load_threads = 1;
     opts.p50_threshold_us = 100.0;
     opts.p99_threshold_us = 500.0;
+    snprintf(opts.threshold_source, sizeof(opts.threshold_source), "host-default");
     const char *out = NULL;
     int host = 0;
 
@@ -255,21 +256,44 @@ static int cmd_report(int argc, char **argv) {
 }
 
 static int cmd_build(void) {
+    if (!path_exists("src/qnx_demo.c") || !path_exists("src/transport_qnx.c") ||
+        !path_exists("src/stats.c")) {
+        fprintf(stderr,
+            "qrtp build: run from the repo root (src/qnx_demo.c not found here).\n");
+        return 1;
+    }
+    const char *home = getenv("HOME");
+    char qcc_sdp[PATH_MAX] = "";
+    if (home)
+        snprintf(qcc_sdp, sizeof(qcc_sdp),
+                 "%s/qnx/qnx800/host/linux/x86_64/usr/bin/qcc", home);
     char *qcc = first_line("command -v qcc 2>/dev/null");
+    if (!qcc && qcc_sdp[0] && path_exists(qcc_sdp))
+        qcc = qcc_sdp;
     if (!qcc) {
         fprintf(stderr,
             "qrtp build: BLOCKED — qcc not found.\n"
-            "  Missing: QNX SDP 8.0 (qcc cross-compiler) and the QNX_TARGET env.\n"
-            "  When present, this command cross-compiles src/qnx_demo.c for\n"
-            "  ntox86_64 (qcc -Vgcc_ntox86_64).\n"
+            "  Missing: QNX SDP 8.0 (qcc cross-compiler) at ~/qnx/qnx800.\n"
             "  Next step: resolve myQNX auth for the Software Center, then run\n"
             "  install-sdp.sh (see PLAN.md, risk R8).\n");
         return 1;
     }
-    fprintf(stderr,
-        "qrtp build: qcc found at %s, but the cross-compile wiring is not\n"
-        "  implemented yet (lands with M1, once the SDP is installed).\n", qcc);
-    return 1;
+    /* Compile with the SDP env sourced so QNX_TARGET/QNX_HOST are set. */
+    char cmd[PATH_MAX * 2];
+    snprintf(cmd, sizeof(cmd),
+             "bash -c 'source \"$HOME/qnx/qnx800/qnxsdp-env.sh\" >/dev/null 2>&1; "
+             "qcc -Vgcc_ntox86_64 -O2 -o qnx_demo "
+             "src/qnx_demo.c src/transport_qnx.c src/stats.c -lm'");
+    printf("qrtp build: %s\n", cmd);
+    printf("qrtp build: using qcc at %s\n", qcc);
+    int rc = system(cmd);
+    if (rc != 0) {
+        fprintf(stderr, "qrtp build: qcc failed (rc=%d)\n", rc);
+        return 1;
+    }
+    char *file_out = first_line("file qnx_demo 2>/dev/null");
+    printf("qrtp build: OK — %s\n", file_out ? file_out : "qnx_demo");
+    return 0;
 }
 
 static int cmd_boot(int argc, char **argv) {

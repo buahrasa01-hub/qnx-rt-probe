@@ -17,17 +17,28 @@ tool reports round-trip latency (p50/p95/p99), jitter (max + p99), and a
 PASS/FAIL verdict against thresholds. If your priority design does not
 hold up under load, the numbers say so.
 
-## Status (20 Nov 2026)
+## Status (20 Nov 2026, M3 done)
 
 - **Host path: WORKING.** `qrtp bench --host` runs the full measurement
   on Linux (POSIX socketpair transport, same 64-byte ping-pong, same
   statistics, same report format). Verified by `make test`.
-- **QNX path: BLOCKED on the SDP install.** The QNX Software Center
-  needs myQNX account auth to sync packages (`qcc` is not installed
-  yet). `qrtp build`, `qrtp boot`, and `qrtp run` fail loudly with the
-  missing piece named — they never fake a result. The guest demo source
-  (`src/qnx_demo.c`, `src/transport_qnx.c`) is written and waiting for
-  the first `qcc` compile.
+- **QNX path: WORKING.** QNX 8.0 boots in QEMU (hand-built disk image,
+  no QSTI needed) and `qnx_demo` runs the native `MsgSend`/`MsgReceive`
+  benchmark: 2000 iterations, p50 **20.9 µs** / p95 **31.6 µs** /
+  p99 **46.2 µs** (first guest run; see `qemu-boot/BOOT-LOG.md`).
+- **Load sweep (M3): WORKING.** Loads 0, 1, 2, 4 on host and guest
+  (`./scripts/run-load-sweep.sh`, results in `docs/LOAD-SWEEP.md`).
+  Headline: guest p50 stays **20.4–20.9 µs at every load** — the
+  SCHED_FIFO priority-20 sender is shielded from CPU load. Guest
+  thresholds are calibrated from the sweep: PASS when p50 ≤ **50 µs**
+  and p99 ≤ **100 µs** (source `"guest-calibrated"` in the report;
+  host defaults 100/500 µs remain host-only).
+- **Harness (M3):** `qrtp doctor` reports the real environment
+  (SDP at `~/qnx/qnx800`, `qcc`, QEMU 8.2.2, boot disk) and
+  `qrtp build` really cross-compiles the demo with `qcc`.
+  `qrtp report` re-prints host and guest reports with the correct
+  threshold source. `qrtp boot` / `qrtp run` are still stubs — the
+  working guest path is `scripts/run-qemu-generic.sh`.
 
 ## Quickstart (host, no SDP needed)
 
@@ -43,11 +54,11 @@ Or the wrapper: `scripts/run-host.sh`.
 
 | Command | What it does |
 |---|---|
-| `qrtp doctor` | Environment check: gcc, QEMU, `qcc`, `~/qnx800`, QSTI image |
+| `qrtp doctor` | Environment check: gcc, QEMU, `qcc`, `~/qnx/qnx800`, boot disk |
 | `qrtp bench --host` | Host benchmark (see options below) |
-| `qrtp report <file>` | Re-print a report JSON as a table |
-| `qrtp build` | STUB: cross-compile the QNX demo (needs `qcc`) |
-| `qrtp boot [--image P]` | STUB: boot the QSTI image in QEMU |
+| `qrtp report <file>` | Re-print a report JSON as a table (host or QNX guest) |
+| `qrtp build` | Cross-compile the QNX demo with `qcc` (needs the SDP) |
+| `qrtp boot [--image P]` | STUB: boot the QSTI image in QEMU (working guest path is `scripts/run-qemu-generic.sh`) |
 | `qrtp run` | STUB: full pipeline (blocked on the SDP) |
 
 `qrtp bench --host` options: `--iterations N` (default 10000),
@@ -55,6 +66,10 @@ Or the wrapper: `scripts/run-host.sh`.
 `--out FILE` (default `results/<timestamp>.json`),
 `--p50-us X` (default 100), `--p99-us Y` (default 500).
 Verdict is PASS only when p50 ≤ threshold AND p99 ≤ threshold.
+For the guest, thresholds are the calibrated 50/100 µs baked into
+`qnx_demo` (see `docs/LOAD-SWEEP.md`); use
+`./scripts/run-load-sweep.sh` to re-measure loads 0, 1, 2, 4 on
+host and guest and print the comparison table.
 
 ## Report format
 
@@ -76,16 +91,20 @@ are host-calibration placeholders, not guest thresholds), `stats`
   table; `src/transport.h` — transport interface;
   `src/transport_posix.c` — socketpair host transport;
   `src/transport_qnx.c`, `src/qnx_demo.c` — QNX guest code (qcc only).
-- `scripts/run-qemu.sh` — QEMU orchestration (ready for M1);
-  `scripts/run-host.sh` — host wrapper.
+- `scripts/run-qemu-generic.sh` — build the generic boot disk + boot it
+  in QEMU (the working guest path); `scripts/run-qemu.sh` — QEMU
+  orchestration for the qemu-virt/QSTI path; `scripts/run-host.sh` —
+  host wrapper; `scripts/run-load-sweep.sh` — load sweep (M3) on host
+  and guest with a comparison table.
 - `tests/` — unit test (`test_stats.c`) + smoke test (`test_bench.sh`).
-- `docs/CODELAB.md` — draft codelab (Best Codelab bonus).
+- `docs/CODELAB.md` — codelab (Best Codelab bonus), complete;
+  `docs/LOAD-SWEEP.md` — load-sweep results + threshold calibration.
 
 ## Roadmap to 15 Dec 2026
 
-1. SDP install + first `qcc` compile + first QEMU boot (M1).
-2. First guest benchmark run + real guest numbers (M2).
-3. Threshold re-calibration for the guest + codelab completion (M3).
+1. SDP install + first `qcc` compile + first QEMU boot (M1) — DONE 20 Nov.
+2. First guest benchmark run + real guest numbers (M2) — DONE 20 Nov.
+3. Load sweep + threshold calibration + codelab completion (M3) — DONE 20 Nov.
 4. Evidence pack + demo video + Devpost submit by 15 Dec daytime WIB.
 
 ## Requirements

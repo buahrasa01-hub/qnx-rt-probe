@@ -51,8 +51,9 @@ int qrtp_report_write(const char *path, const qrtp_bench_opts_t *opts,
     fprintf(f, "  \"warmup\": %d,\n", opts->warmup);
     fprintf(f, "  \"load_threads\": %d,\n", opts->load_threads);
     fprintf(f, "  \"priority_elevated\": %s,\n", res->priority_elevated ? "true" : "false");
-    fprintf(f, "  \"thresholds_us\": {\"p50\": %.1f, \"p99\": %.1f, \"source\": \"host-default\"},\n",
-            opts->p50_threshold_us, opts->p99_threshold_us);
+    fprintf(f, "  \"thresholds_us\": {\"p50\": %.1f, \"p99\": %.1f, \"source\": \"%s\"},\n",
+            opts->p50_threshold_us, opts->p99_threshold_us,
+            opts->threshold_source[0] ? opts->threshold_source : "host-default");
     fprintf(f, "  \"stats\": {\n");
     fprintf(f, "    \"count\": %d,\n", s->n);
     fprintf(f, "    \"min_us\": %.1f,\n", s->min_us);
@@ -75,14 +76,18 @@ int qrtp_report_write(const char *path, const qrtp_bench_opts_t *opts,
 void qrtp_report_print(const qrtp_bench_opts_t *opts,
                        const qrtp_bench_result_t *res, const char *verdict) {
     const qrtp_stats_t *s = &res->stats;
-    printf("%s %s — host benchmark (posix-socketpair)\n", QRTP_TOOL, QRTP_VERSION);
+    if (res->qnx)
+        printf("%s %s — QNX guest benchmark (qnx-msgsend)\n", QRTP_TOOL, QRTP_VERSION);
+    else
+        printf("%s %s — host benchmark (posix-socketpair)\n", QRTP_TOOL, QRTP_VERSION);
     printf("iterations: %d (warmup %d excluded)   load threads: %d\n",
            opts->iterations, opts->warmup, opts->load_threads);
     printf("priority elevated: %s", res->priority_elevated ? "yes" : "no");
     if (!res->priority_elevated)
         printf(" (SCHED_FIFO unavailable — unprivileged user; ran under SCHED_OTHER)");
     printf("\n");
-    printf("thresholds (host-default): p50 <= %.1f us, p99 <= %.1f us\n",
+    printf("thresholds (%s): p50 <= %.1f us, p99 <= %.1f us\n",
+           opts->threshold_source[0] ? opts->threshold_source : "host-default",
            opts->p50_threshold_us, opts->p99_threshold_us);
     printf("  count          %d\n", s->n);
     printf("  min            %.1f us\n", s->min_us);
@@ -188,6 +193,15 @@ int qrtp_report_read(const char *path, qrtp_bench_opts_t *opts,
     if (read_double(json, "p50", &opts->p50_threshold_us) != 0 ||
         read_double(json, "p99", &opts->p99_threshold_us) != 0)
         goto done;
+    /* threshold source: "source" appears once (inside thresholds_us in
+     * our own reports). Absent in older files -> host-default. */
+    if (read_string(json, "source", opts->threshold_source,
+                    sizeof(opts->threshold_source)) != 0)
+        snprintf(opts->threshold_source, sizeof(opts->threshold_source),
+                 "host-default");
+    /* guest flag: absent in older files -> host (0). */
+    if (read_bool(json, "qnx", &res->qnx) != 0)
+        res->qnx = 0;
     if (read_int(json, "count", &res->stats.n) != 0 ||
         read_double(json, "min_us", &res->stats.min_us) != 0 ||
         read_double(json, "max_us", &res->stats.max_us) != 0 ||

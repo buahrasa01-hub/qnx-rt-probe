@@ -1,0 +1,5 @@
+serial console up
+running qnx_demo
+{"tool":"qnx-rt-probe","tool_version":"0.1.0","transport":"qnx-msgsend","host":false,"qnx":true,"iterations":2000,"warmup":200,"load_threads":0,"priority_elevated":true,"thresholds_us":{"p50":100.0,"p99":500.0,"source":"host-default"},"stats":{"count":2000,"min_us":20.4,"max_us":2081.9,"mean_us":23.6,"stddev_us":53.3,"p50_us":20.9,"p95_us":29.7,"p99_us":47.4,"jitter_max_us":2061.1,"jitter_p99_us":38.2},"verdict":"PASS"}
+qnx_demo done
+qemu-system-x86_64: terminating on signal 15 from pid 7971 (timeout)
