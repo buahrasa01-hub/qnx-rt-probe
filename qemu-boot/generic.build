@@ -1,0 +1,42 @@
+# generic.build — diskless QNX 8.0 boot image for QEMU q35, WITHOUT the
+# qemuvirt / virtio-devb packages (not installed; they need myQNX auth).
+# Uses generic startup-x86 + serial console (devc-ser8250) and the compiled
+# qnx_demo. No disk driver is needed: the demo runs straight from the IFS.
+# The qemu-virt path (startup-qemu-virt + devb-virtio + QSTI) is untouched;
+# this is a SEPARATE variant, added 20 Nov 2026 by parent approval.
+#
+# v3 (20 Nov ~07:00): added libsecpol.so.1 — devc-ser8250 needs it
+# (attempt 6: "ldd:FATAL: Could not load library libsecpol.so.1", so
+# /dev/ser1 never existed and all output went to VGA). With it, the
+# serial console works and the demo result lands in the serial log.
+#
+# Build (from the repo root):
+#   source ~/qnx/qnx800/qnxsdp-env.sh
+#   mkifs -v qemu-boot/generic.build qemu-boot/generic.ifs
+[image=0x100000]
+[virtual=x86_64,bios] .bootstrap = {
+    startup-x86 -v
+    PATH=/proc/boot:/bin:/usr/bin LD_LIBRARY_PATH=/proc/boot:/lib:/usr/lib:/lib/dll procnto-smp-instr
+}
+[+script] .script = {
+    display_msg "qnx-rt-probe: generic x86 boot (no qemuvirt)"
+    devc-con -n4
+    waitfor /dev/con1
+    reopen /dev/con1
+    display_msg "vga console up"
+    devc-ser8250 -e -F -b115200 0x3f8,4
+    waitfor /dev/ser1
+    reopen /dev/ser1
+    display_msg "serial console up"
+    display_msg "running qnx_demo"
+    /proc/boot/qnx_demo --iterations 2000 --warmup 200 --load 1
+    display_msg "qnx_demo done"
+}
+libc.so.6
+libm.so.3
+libgcc_s.so.1
+libsecpol.so.1
+/usr/lib/ldqnx-64.so.2=ldqnx-64.so.2
+devc-ser8250
+devc-con
+qnx_demo=/home/hatch/workspace/overnight/qnx-rt-probe/repo/qnx_demo

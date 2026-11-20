@@ -13,7 +13,7 @@
  * the host report so the host `qrtp report` reader can consume it.
  *
  * Build once the SDP is installed (from the repo root):
- *   source ~/qnx800/qnxsdp-env.sh
+ *   source ~/qnx/qnx800/qnxsdp-env.sh
  *   qcc -Vgcc_ntox86_64 -O2 -o qnx_demo src/qnx_demo.c src/transport_qnx.c src/stats.c -lm
  */
 #ifdef __QNX__

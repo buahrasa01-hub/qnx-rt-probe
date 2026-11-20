@@ -1,10 +1,18 @@
 # host binary
 qrtp
+qnx_demo
 # object files
 *.o
 # results
 results/
 build/
+# qemu boot artifacts (reproducible via scripts/run-qemu-generic.sh)
+qemu-boot/*.ifs
+qemu-boot/*.img
+qemu-boot/*.part
+qemu-boot/disk.log
+qemu-boot/qemu*.log
+qemu-boot/disk?.log
 # editor
 *.swp
 *~

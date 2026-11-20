@@ -1,0 +1,8 @@
+# boot_part.build — QNX6 (Power-Safe) filesystem holding the boot IFS.
+# Follows mkqnximage's BIOS convention: the IFS lives at /.boot/qnx_sdp.ifs
+# and IPL2 (ipl-diskpc2-fsq6, installed into the fs reserved sectors by
+# diskimage) loads it. Built with:
+#   source ~/qnx/qnx800/qnxsdp-env.sh
+#   mkqnx6fsimg qemu-boot/boot_part.build qemu-boot/boot.part
+[num_sectors=*512]
+/.boot/qnx_sdp.ifs=/home/hatch/workspace/overnight/qnx-rt-probe/repo/qemu-boot/generic.ifs
